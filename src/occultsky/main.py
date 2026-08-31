@@ -13,6 +13,8 @@ from skyfield.api import Loader, wgs84
 from skyfield.api import GREGORIAN_START
 from skyfield.framelib import ecliptic_frame
 
+from .utils.constants import PLANET_MAP
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -144,6 +146,128 @@ class Observer:
         return [dusks[0], dawns[0], dusks[1], dawns[1]]
 
 
+    def get_moonrise(self, date_str: str) -> list:
+        """Return the time of moonrise for the given local date.
+
+        Searches within solar noon ± 1 day for moonrise.
+
+        Args:
+            date_str: Local date in ``YYYY-MM-DD`` format.
+
+        Returns:
+            List of LMT ISO strings.
+        """
+        # Get solar noon time
+        solar_noon_str = self.get_solarnoon(date_str)
+        solar_noon = datetime.fromisoformat(solar_noon_str)
+
+        # Search window: solar noon ± 1 day
+        start = solar_noon - timedelta(days=1)
+        end = solar_noon + timedelta(days=1)
+
+        moon = self.eph['moon']
+        t0 = self.ts.from_datetime(start)
+        t1 = self.ts.from_datetime(end)
+
+        t, y = almanac.find_risings(self.observer, moon, t0, t1)
+        return [ti.astimezone(self.tz).isoformat() for ti in t]
+
+    def get_moonset(self, date_str: str) -> list:
+        """Return the time of moonset for the given local date.
+
+        Searches within solar noon ± 1 day for moonset.
+
+        Args:
+            date_str: Local date in ``YYYY-MM-DD`` format.
+
+        Returns:
+            List of LMT ISO strings.
+        """
+        # Get solar noon time
+        solar_noon_str = self.get_solarnoon(date_str)
+        solar_noon = datetime.fromisoformat(solar_noon_str)
+
+        # Search window: solar noon ± 1 day
+        start = solar_noon - timedelta(days=1)
+        end = solar_noon + timedelta(days=1)
+
+        moon = self.eph['moon']
+        t0 = self.ts.from_datetime(start)
+        t1 = self.ts.from_datetime(end)
+
+        t, y = almanac.find_settings(self.observer, moon, t0, t1)
+        return [ti.astimezone(self.tz).isoformat() for ti in t]
+
+    def get_planet_rise(self, planet: str, date_str: str) -> list:
+        """Return the time of rising for a planet on the given local date.
+
+        Searches within solar noon ± 1 day for planet rise.
+
+        Args:
+            planet: Planet name (e.g. ``'mars'``, ``'jupiter'``, ``'saturn'``).
+            date_str: Local date in ``YYYY-MM-DD`` format.
+
+        Returns:
+            List of LMT ISO strings.
+
+        Raises:
+            KeyError: If planet name is not found in ephemeris.
+        """
+        # Get solar noon time
+        solar_noon_str = self.get_solarnoon(date_str)
+        solar_noon = datetime.fromisoformat(solar_noon_str)
+
+        # Search window: solar noon ± 1 day
+        start = solar_noon - timedelta(days=1)
+        end = solar_noon + timedelta(days=1)
+
+        # Map planet name to ephemeris key
+        planet_key = PLANET_MAP.get(planet.lower(), planet.lower())
+        try:
+            body = self.eph[planet_key]
+        except (KeyError, ValueError):
+            raise KeyError(f"Unknown planet {planet!r}") from None
+        t0 = self.ts.from_datetime(start)
+        t1 = self.ts.from_datetime(end)
+
+        t, y = almanac.find_risings(self.observer, body, t0, t1)
+        return [ti.astimezone(self.tz).isoformat() for ti in t]
+
+    def get_planet_set(self, planet: str, date_str: str) -> list:
+        """Return the time of setting for a planet on the given local date.
+
+        Searches within solar noon ± 1 day for planet set.
+
+        Args:
+            planet: Planet name (e.g. ``'mars'``, ``'jupiter'``, ``'saturn'``).
+            date_str: Local date in ``YYYY-MM-DD`` format.
+
+        Returns:
+            List of LMT ISO strings.
+
+        Raises:
+            KeyError: If planet name is not found in ephemeris.
+        """
+        # Get solar noon time
+        solar_noon_str = self.get_solarnoon(date_str)
+        solar_noon = datetime.fromisoformat(solar_noon_str)
+
+        # Search window: solar noon ± 1 day
+        start = solar_noon - timedelta(days=1)
+        end = solar_noon + timedelta(days=1)
+
+        # Map planet name to ephemeris key
+        planet_key = PLANET_MAP.get(planet.lower(), planet.lower())
+        try:
+            body = self.eph[planet_key]
+        except (KeyError, ValueError):
+            raise KeyError(f"Unknown planet {planet!r}") from None
+        t0 = self.ts.from_datetime(start)
+        t1 = self.ts.from_datetime(end)
+
+        t, y = almanac.find_settings(self.observer, body, t0, t1)
+        return [ti.astimezone(self.tz).isoformat() for ti in t]
+
     def get_moon_phase(self, date_str: str) -> dict:
         """Return moon phase and illumination at solar noon + 12h for the given local date.
 
@@ -180,19 +304,6 @@ class Observer:
             "phase_name": phase_name,
         }
 
-
-    # def moon(self, dt: datetime):
-    #     astrometric = self.observer.at(t).observe(self.eph['moon'])
-    #     ra, dec, _ = astrometric.apparent().radec()
-    #     return {
-    #         "right_ascension": float(ra.hours),
-    #         "declination": float(dec.degrees),
-    #     }
-
-    # def planet(self, planet, dt: datetime) -> dict:
-
-    #     astrometric = self.observer.at(t).observe(self.eph[planet])
-    #     return astrometric.apparent().radec()
 
     # def get_angular_distance(
     #     self, 
