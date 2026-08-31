@@ -71,7 +71,7 @@ class Observer:
         self.tz = timezone(timedelta(seconds=round(lon * 240)))
 
 
-    def get_solarnoon(self, date_str: str) -> str:
+    def get_solarnoon(self, date_str: str) -> datetime:
         """
         Return the time of true solar noon (Sun's upper meridian transit) for the given local date.
 
@@ -79,7 +79,7 @@ class Observer:
             date_str: Local date in ``YYYY-MM-DD`` format.
 
         Returns:
-            LMT ISO string (``YYYY-MM-DDTHH:MM:SS±HH:MM``).
+            Timezone-aware datetime object.
 
         Raises:
             ValueError: If ``date_str`` is not ``YYYY-MM-DD`` format, or if no solar meridian transit is found.
@@ -102,10 +102,10 @@ class Observer:
                 f"No solar meridian transit found on {date_str}"
             )
         solar_noon = times[0].astimezone(self.tz)
-        return solar_noon.isoformat()
+        return solar_noon
 
 
-    def get_twilight(self, date_str: str) -> list:
+    def get_twilight(self, date_str: str) -> list[datetime]:
         """Return astronomical twilight times for the given local date.
 
         Searches within solar noon ± 1 day for astronomical dawn and dusk.
@@ -114,12 +114,11 @@ class Observer:
             date_str: Local date in ``YYYY-MM-DD`` format.
 
         Returns:
-            List of 4 local ISO time strings in fixed order:
+            List of 4 timezone-aware datetime objects in fixed order:
             [previous_dusk, dawn, dusk, next_dawn]
         """
         # Get solar noon time
-        solar_noon_str = self.get_solarnoon(date_str)
-        solar_noon = datetime.fromisoformat(solar_noon_str)
+        solar_noon = self.get_solarnoon(date_str)
 
         # Search window: solar noon ± 1 day
         start = solar_noon - timedelta(days=1)
@@ -135,18 +134,18 @@ class Observer:
         dawns = []
         previous_e = f(t0).item()
         for ti, ei in zip(times, events):
-            local_iso = ti.astimezone(self.tz).isoformat()
+            local_dt = ti.astimezone(self.tz)
             if previous_e == 0 and ei == 1:
-                dawns.append(local_iso)
+                dawns.append(local_dt)
             elif previous_e == 1 and ei == 0:
-                dusks.append(local_iso)
+                dusks.append(local_dt)
             previous_e = ei
 
         # Return in fixed order: [previous_dusk, dawn, dusk, next_dawn]
         return [dusks[0], dawns[0], dusks[1], dawns[1]]
 
 
-    def get_moonrise(self, date_str: str) -> list:
+    def get_moonrise(self, date_str: str) -> list[datetime]:
         """Return the time of moonrise for the given local date.
 
         Searches within solar noon ± 1 day for moonrise.
@@ -155,11 +154,10 @@ class Observer:
             date_str: Local date in ``YYYY-MM-DD`` format.
 
         Returns:
-            List of LMT ISO strings.
+            List of timezone-aware datetime objects.
         """
         # Get solar noon time
-        solar_noon_str = self.get_solarnoon(date_str)
-        solar_noon = datetime.fromisoformat(solar_noon_str)
+        solar_noon = self.get_solarnoon(date_str)
 
         # Search window: solar noon ± 1 day
         start = solar_noon - timedelta(days=1)
@@ -170,9 +168,10 @@ class Observer:
         t1 = self.ts.from_datetime(end)
 
         t, y = almanac.find_risings(self.observer, moon, t0, t1)
-        return [ti.astimezone(self.tz).isoformat() for ti in t]
+        return [ti.astimezone(self.tz) for ti in t]
 
-    def get_moonset(self, date_str: str) -> list:
+
+    def get_moonset(self, date_str: str) -> list[datetime]:
         """Return the time of moonset for the given local date.
 
         Searches within solar noon ± 1 day for moonset.
@@ -181,11 +180,10 @@ class Observer:
             date_str: Local date in ``YYYY-MM-DD`` format.
 
         Returns:
-            List of LMT ISO strings.
+            List of timezone-aware datetime objects.
         """
         # Get solar noon time
-        solar_noon_str = self.get_solarnoon(date_str)
-        solar_noon = datetime.fromisoformat(solar_noon_str)
+        solar_noon = self.get_solarnoon(date_str)
 
         # Search window: solar noon ± 1 day
         start = solar_noon - timedelta(days=1)
@@ -196,9 +194,10 @@ class Observer:
         t1 = self.ts.from_datetime(end)
 
         t, y = almanac.find_settings(self.observer, moon, t0, t1)
-        return [ti.astimezone(self.tz).isoformat() for ti in t]
+        return [ti.astimezone(self.tz) for ti in t]
 
-    def get_planet_rise(self, planet: str, date_str: str) -> list:
+
+    def get_planet_rise(self, planet: str, date_str: str) -> list[datetime]:
         """Return the time of rising for a planet on the given local date.
 
         Searches within solar noon ± 1 day for planet rise.
@@ -208,14 +207,13 @@ class Observer:
             date_str: Local date in ``YYYY-MM-DD`` format.
 
         Returns:
-            List of LMT ISO strings.
+            List of timezone-aware datetime objects.
 
         Raises:
             KeyError: If planet name is not found in ephemeris.
         """
         # Get solar noon time
-        solar_noon_str = self.get_solarnoon(date_str)
-        solar_noon = datetime.fromisoformat(solar_noon_str)
+        solar_noon = self.get_solarnoon(date_str)
 
         # Search window: solar noon ± 1 day
         start = solar_noon - timedelta(days=1)
@@ -231,9 +229,10 @@ class Observer:
         t1 = self.ts.from_datetime(end)
 
         t, y = almanac.find_risings(self.observer, body, t0, t1)
-        return [ti.astimezone(self.tz).isoformat() for ti in t]
+        return [ti.astimezone(self.tz) for ti in t]
 
-    def get_planet_set(self, planet: str, date_str: str) -> list:
+
+    def get_planet_set(self, planet: str, date_str: str) -> list[datetime]:
         """Return the time of setting for a planet on the given local date.
 
         Searches within solar noon ± 1 day for planet set.
@@ -243,14 +242,13 @@ class Observer:
             date_str: Local date in ``YYYY-MM-DD`` format.
 
         Returns:
-            List of LMT ISO strings.
+            List of timezone-aware datetime objects.
 
         Raises:
             KeyError: If planet name is not found in ephemeris.
         """
         # Get solar noon time
-        solar_noon_str = self.get_solarnoon(date_str)
-        solar_noon = datetime.fromisoformat(solar_noon_str)
+        solar_noon = self.get_solarnoon(date_str)
 
         # Search window: solar noon ± 1 day
         start = solar_noon - timedelta(days=1)
@@ -266,7 +264,8 @@ class Observer:
         t1 = self.ts.from_datetime(end)
 
         t, y = almanac.find_settings(self.observer, body, t0, t1)
-        return [ti.astimezone(self.tz).isoformat() for ti in t]
+        return [ti.astimezone(self.tz) for ti in t]
+
 
     def get_moon_phase(self, date_str: str) -> dict:
         """Return moon phase and illumination at solar noon + 12h for the given local date.
@@ -278,8 +277,7 @@ class Observer:
             Dict with keys: ``phase_angle`` (0–360°), ``illumination`` (0–1), ``phase_name`` (string).
         """
         # Get solar noon and add 12 hours for midnight observation
-        solar_noon_str = self.get_solarnoon(date_str)
-        solar_noon = datetime.fromisoformat(solar_noon_str)
+        solar_noon = self.get_solarnoon(date_str)
         midnight = solar_noon + timedelta(hours=12)
 
         t = self.ts.from_datetime(midnight)
@@ -305,30 +303,150 @@ class Observer:
         }
 
 
-    # def get_angular_distance(
-    #     self, 
-    #     body1: str, 
-    #     body2: str, 
-    #     dt: datetime
-    # ) -> float:
-    #     """Return angular separation (degrees) between two celestial bodies.
+    def get_visibility_windows(
+        self,
+        date_str: str,
+        target: str = 'moon',
+        interval: timedelta = timedelta(minutes=15)
+    ) -> list[datetime]:
+        """Return visibility windows for the given local date.
 
-    #     Args:
-    #         body1: Name of the first body (e.g. ``"Moon"``, ``"Sun"``).
-    #         body2: Name of the second body (e.g. ``"Jupiter"``).
-    #         dt: Timezone-aware datetime (any offset is accepted).
+        Searches within [previous_dusk, dawn] and [dusk, next_dawn] windows for target visibility periods and samples them at the given interval.
 
-    #     Returns:
-    #         Angular distance in degrees.
-    #     """
-    #     try:
-    #         b1 = self.eph[body1]
-    #         b2 = self.eph[body2]
-    #     except KeyError as e:
-    #         raise KeyError(
-    #             f"Unknown body {e.args[0]!r}; available: "
-    #             f"{sorted(self.eph.keys())}"
-    #         ) from None
-    #     pos1 = self.observer.at(t).observe(b1)
-    #     pos2 = self.observer.at(t).observe(b2)
-    #     return float(pos1.apparent().separation_from(pos2.apparent()).degrees)
+        Args:
+            date_str: Local date in ``YYYY-MM-DD`` format.
+            target: Target body name (e.g. ``'moon'``, ``'mars'``, ``'jupiter'``).
+            interval: Time interval for sampling (default: 15 minutes).
+
+        Returns:
+            List of timezone-aware datetimes when the target is visible. Returns empty list if the target is not visible in either window.
+
+        Raises:
+            KeyError: If target name is not found in ephemeris.
+        """
+        # Get twilight times
+        previous_dusk, dawn, dusk, next_dawn = self.get_twilight(date_str)
+
+        # Get target body from ephemeris
+        if target.lower() == 'moon':
+            body = self.eph['moon']
+        else:
+            # Map planet name to ephemeris key
+            target_key = PLANET_MAP.get(target.lower(), target.lower())
+            try:
+                body = self.eph[target_key]
+            except (KeyError, ValueError):
+                raise KeyError(f"Unknown target {target!r}") from None
+
+        # Use find_discrete to find target visibility periods
+        f = almanac.risings_and_settings(self.eph, body, self.topos)
+
+        # Process window 1: [previous_dusk, dawn]
+        window1_start = previous_dusk
+        window1_end = dawn
+        t0 = self.ts.from_datetime(window1_start)
+        t1 = self.ts.from_datetime(window1_end)
+        times, events = almanac.find_discrete(t0, t1, f)
+
+        # Determine visibility periods for window 1
+        window1_visibility = []
+        previous_event = f(t0).item()  # True if target is up at window start
+        for ti, ei in zip(times, events):
+            if previous_event and not ei:
+                # Target sets: end of visibility period
+                if window1_visibility:
+                    window1_visibility[-1] = (window1_visibility[-1][0], ti.astimezone(self.tz))
+            elif not previous_event and ei:
+                # Target rises: start of visibility period
+                window1_visibility.append((ti.astimezone(self.tz), None))
+            previous_event = ei
+
+        # If target is up at window start, add the first period
+        if f(t0).item() and not window1_visibility:
+            window1_visibility.append((window1_start, None))
+
+        # If target is still up at window end, set end to window end
+        for i, (start, end) in enumerate(window1_visibility):
+            if end is None:
+                window1_visibility[i] = (start, window1_end)
+
+        # Process window 2: [dusk, next_dawn]
+        window2_start = dusk
+        window2_end = next_dawn
+        t0 = self.ts.from_datetime(window2_start)
+        t1 = self.ts.from_datetime(window2_end)
+        times, events = almanac.find_discrete(t0, t1, f)
+
+        # Determine visibility periods for window 2
+        window2_visibility = []
+        previous_event = f(t0).item()  # True if target is up at window start
+        for ti, ei in zip(times, events):
+            if previous_event and not ei:
+                # Target sets: end of visibility period
+                if window2_visibility:
+                    window2_visibility[-1] = (window2_visibility[-1][0], ti.astimezone(self.tz))
+            elif not previous_event and ei:
+                # Target rises: start of visibility period
+                window2_visibility.append((ti.astimezone(self.tz), None))
+            previous_event = ei
+
+        # If target is up at window start, add the first period
+        if f(t0).item() and not window2_visibility:
+            window2_visibility.append((window2_start, None))
+
+        # If target is still up at window end, set end to window end
+        for i, (start, end) in enumerate(window2_visibility):
+            if end is None:
+                window2_visibility[i] = (start, window2_end)
+
+        # Sample visibility periods
+        result = []
+        for start, end in window1_visibility + window2_visibility:
+            current = start
+            while current <= end:
+                result.append(current)
+                current += interval
+
+        return result
+
+    def get_angular_distance(
+        self, 
+        body1: str, 
+        body2: str, 
+        datetimes: list[datetime]
+    ) -> list[float]:
+        """Return angular separation (degrees) between two celestial bodies.
+
+        Args:
+            body1: Name of the first body (e.g. ``"Moon"``, ``"sun"``).
+            body2: Name of the second body (e.g. ``"Jupiter"``, ``"mars"``).
+            datetimes: List of timezone-aware datetimes.
+
+        Returns:
+            List of angular distances in degrees.
+
+        Raises:
+            KeyError: If body name is not found in ephemeris.
+            ValueError: If datetimes list is empty.
+        """
+        if len(datetimes) == 0:
+            raise ValueError("datetimes list cannot be empty")
+
+        # Map body names to ephemeris keys
+        key1 = PLANET_MAP.get(body1.lower(), body1.lower())
+        key2 = PLANET_MAP.get(body2.lower(), body2.lower())
+        try:
+            b1 = self.eph[key1]
+            b2 = self.eph[key2]
+        except (KeyError, ValueError):
+            raise KeyError(f"Unknown body {body1!r} or {body2!r}") from None
+
+        # Compute separation for each time
+        results = []
+        for dt in datetimes:
+            t = self.ts.from_datetime(dt)
+            pos1 = self.observer.at(t).observe(b1)
+            pos2 = self.observer.at(t).observe(b2)
+            sep = pos1.apparent().separation_from(pos2.apparent())
+            results.append(float(sep.degrees))
+        return results
