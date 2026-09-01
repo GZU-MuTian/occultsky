@@ -303,20 +303,20 @@ class Observer:
         }
 
 
-    def get_visibility_windows(
+    def get_visible_times(
         self,
         date_str: str,
         target: str = 'moon',
-        interval: timedelta = timedelta(minutes=15)
+        interval: int = 15
     ) -> list[datetime]:
-        """Return visibility windows for the given local date.
+        """Return the times when the target is visible on the given local date.
 
-        Searches within [previous_dusk, dawn] and [dusk, next_dawn] windows for target visibility periods and samples them at the given interval.
+        Samples the [previous_dusk, dawn] and [dusk, next_dawn] windows at the given interval and keeps the points where the target is above the horizon.
 
         Args:
             date_str: Local date in ``YYYY-MM-DD`` format.
             target: Target body name (e.g. ``'moon'``, ``'mars'``, ``'jupiter'``).
-            interval: Time interval for sampling (default: 15 minutes).
+            interval: Time interval for sampling in minutes (default: 15).
 
         Returns:
             List of timezone-aware datetimes when the target is visible. Returns empty list if the target is not visible in either window.
@@ -328,84 +328,24 @@ class Observer:
         previous_dusk, dawn, dusk, next_dawn = self.get_twilight(date_str)
 
         # Get target body from ephemeris
-        if target.lower() == 'moon':
-            body = self.eph['moon']
-        else:
-            # Map planet name to ephemeris key
-            target_key = PLANET_MAP.get(target.lower(), target.lower())
-            try:
-                body = self.eph[target_key]
-            except (KeyError, ValueError):
-                raise KeyError(f"Unknown target {target!r}") from None
+        target_key = PLANET_MAP.get(target.lower(), target.lower())
+        try:
+            body = self.eph[target_key]
+        except (KeyError, ValueError):
+            raise KeyError(f"Unknown target {target!r}") from None
 
-        # Use find_discrete to find target visibility periods
+        # "Is the target above the horizon" function, evaluated on the sample grid
         f = almanac.risings_and_settings(self.eph, body, self.topos)
 
-        # Process window 1: [previous_dusk, dawn]
-        window1_start = previous_dusk
-        window1_end = dawn
-        t0 = self.ts.from_datetime(window1_start)
-        t1 = self.ts.from_datetime(window1_end)
-        times, events = almanac.find_discrete(t0, t1, f)
-
-        # Determine visibility periods for window 1
-        window1_visibility = []
-        previous_event = f(t0).item()  # True if target is up at window start
-        for ti, ei in zip(times, events):
-            if previous_event and not ei:
-                # Target sets: end of visibility period
-                if window1_visibility:
-                    window1_visibility[-1] = (window1_visibility[-1][0], ti.astimezone(self.tz))
-            elif not previous_event and ei:
-                # Target rises: start of visibility period
-                window1_visibility.append((ti.astimezone(self.tz), None))
-            previous_event = ei
-
-        # If target is up at window start, add the first period
-        if f(t0).item() and not window1_visibility:
-            window1_visibility.append((window1_start, None))
-
-        # If target is still up at window end, set end to window end
-        for i, (start, end) in enumerate(window1_visibility):
-            if end is None:
-                window1_visibility[i] = (start, window1_end)
-
-        # Process window 2: [dusk, next_dawn]
-        window2_start = dusk
-        window2_end = next_dawn
-        t0 = self.ts.from_datetime(window2_start)
-        t1 = self.ts.from_datetime(window2_end)
-        times, events = almanac.find_discrete(t0, t1, f)
-
-        # Determine visibility periods for window 2
-        window2_visibility = []
-        previous_event = f(t0).item()  # True if target is up at window start
-        for ti, ei in zip(times, events):
-            if previous_event and not ei:
-                # Target sets: end of visibility period
-                if window2_visibility:
-                    window2_visibility[-1] = (window2_visibility[-1][0], ti.astimezone(self.tz))
-            elif not previous_event and ei:
-                # Target rises: start of visibility period
-                window2_visibility.append((ti.astimezone(self.tz), None))
-            previous_event = ei
-
-        # If target is up at window start, add the first period
-        if f(t0).item() and not window2_visibility:
-            window2_visibility.append((window2_start, None))
-
-        # If target is still up at window end, set end to window end
-        for i, (start, end) in enumerate(window2_visibility):
-            if end is None:
-                window2_visibility[i] = (start, window2_end)
-
-        # Sample visibility periods
+        # Sample each night window at the given interval and keep the points where the target is up.
+        step = timedelta(minutes=interval)
         result = []
-        for start, end in window1_visibility + window2_visibility:
-            current = start
-            while current <= end:
-                result.append(current)
-                current += interval
+        for window_start, window_end in ((previous_dusk, dawn), (dusk, next_dawn)):
+            n = (window_end - window_start) // step  # number of steps in the window
+            samples = [window_start + k * step for k in range(n + 1)]
+            t = self.ts.from_datetimes(samples)
+            above_horizon = f(t)
+            result.extend(dt for dt, visible in zip(samples, above_horizon) if visible)
 
         return result
 
@@ -441,12 +381,9 @@ class Observer:
         except (KeyError, ValueError):
             raise KeyError(f"Unknown body {body1!r} or {body2!r}") from None
 
-        # Compute separation for each time
-        results = []
-        for dt in datetimes:
-            t = self.ts.from_datetime(dt)
-            pos1 = self.observer.at(t).observe(b1)
-            pos2 = self.observer.at(t).observe(b2)
-            sep = pos1.apparent().separation_from(pos2.apparent())
-            results.append(float(sep.degrees))
-        return results
+        # Compute separation for all times
+        t = self.ts.from_datetimes(datetimes)
+        pos1 = self.observer.at(t).observe(b1).apparent()
+        pos2 = self.observer.at(t).observe(b2).apparent()
+        sep = pos1.separation_from(pos2)
+        return [float(d) for d in sep.degrees]
