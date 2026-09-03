@@ -349,6 +349,76 @@ class Observer:
 
         return result
 
+
+    def get_altaz(
+        self,
+        datetimes: list[datetime],
+        target: str = 'moon'
+    ) -> list[tuple[float, float]]:
+        """Return the altitude and azimuth of the target at the given datetimes.
+
+        Args:
+            datetimes: List of timezone-aware datetimes.
+            target: Target body name (e.g. ``'moon'``, ``'mars'``, ``'jupiter'``).
+
+        Returns:
+            List of tuples containing the altitude and azimuth in degrees.
+
+        Raises:
+            KeyError: If target name is not found in ephemeris.
+            ValueError: If datetimes list is empty.
+        """
+        if len(datetimes) == 0:
+            raise ValueError("datetimes list cannot be empty")
+
+        # Map target name to ephemeris key
+        target_key = PLANET_MAP.get(target.lower(), target.lower())
+        try:
+            body = self.eph[target_key]
+        except (KeyError, ValueError):
+            raise KeyError(f"Unknown target {target!r}") from None
+
+        # Compute altitude and azimuth for all times
+        t = self.ts.from_datetimes(datetimes)
+        pos = self.observer.at(t).observe(body).apparent()
+        alt, az, _ = pos.altaz()
+        return list(zip(alt.degrees.tolist(), az.degrees.tolist()))
+
+
+    def get_radec(
+        self,
+        datetimes: list[datetime],
+        target: str = 'moon'
+    ) -> list[tuple[float, float]]:
+        """Return the right ascension and declination of the target at the given datetimes.
+
+        Args:
+            datetimes: List of timezone-aware datetimes.
+            target: Target body name (e.g. ``'moon'``, ``'mars'``, ``'jupiter'``).
+
+        Returns:
+            List of tuples containing the right ascension and declination in degrees.
+
+        Raises:
+            KeyError: If target name is not found in ephemeris.
+            ValueError: If datetimes list is empty.
+        """
+        if len(datetimes) == 0:
+            raise ValueError("datetimes list cannot be empty")
+
+        # Map target name to ephemeris key
+        target_key = PLANET_MAP.get(target.lower(), target.lower())
+        try:
+            body = self.eph[target_key]
+        except (KeyError, ValueError):
+            raise KeyError(f"Unknown target {target!r}") from None
+
+        t = self.ts.from_datetimes(datetimes)
+        pos = self.observer.at(t).observe(body).apparent()
+        ra, dec, _ = pos.radec()
+        return list(zip(ra.degrees.tolist(), dec.degrees.tolist()))
+
+
     def get_angular_distance(
         self, 
         body1: str, 

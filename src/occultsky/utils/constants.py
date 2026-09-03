@@ -11,7 +11,6 @@ CAPITALS: Dict[str, Tuple[float, float]] = {
     'beijing':   (116.4, 39.6),
 }
 
-# Planet name mapping for JPL ephemeris kernel (DE441)
 # Outer planets only support barycenter names in DE441
 PLANET_MAP: Dict[str, str] = {
     'mercury': 'mercury',
