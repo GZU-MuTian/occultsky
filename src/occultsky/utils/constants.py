@@ -1,5 +1,8 @@
 from typing import Dict, Tuple
 
+# Moon mean radius in kilometers (IAU standard)
+MOON_RADIUS_KM: float = 1737.4
+
 # Ancient Chinese capitals (lon, lat) in degrees
 CAPITALS: Dict[str, Tuple[float, float]] = {
     'luoyang':   (112.4, 34.7),

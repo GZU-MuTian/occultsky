@@ -13,6 +13,7 @@ from skyfield.api import Loader, wgs84
 from skyfield.api import GREGORIAN_START
 from skyfield.framelib import ecliptic_frame
 
+from .utils.calc import moon_angular_radius
 from .utils.constants import PLANET_MAP
 
 load_dotenv()
@@ -301,6 +302,29 @@ class Observer:
             "illumination": round(illumination, 4),
             "phase_name": phase_name,
         }
+
+
+    def get_moon_angular_radius(self, date_str: str) -> float:
+        """Return the Moon's apparent angular radius in arcseconds.
+
+        Evaluated at solar noon + 12h (local midnight) using the topocentric distance from the observer to the Moon's center, so the result matches what a ground-based observer actually sees.
+
+        Args:
+            date_str: Local date in ``YYYY-MM-DD`` format.
+
+        Returns:
+            Apparent angular radius of the Moon in arcseconds.
+        """
+        # Get solar noon and add 12 hours for midnight observation
+        solar_noon = self.get_solarnoon(date_str)
+        midnight = solar_noon + timedelta(hours=12)
+
+        t = self.ts.from_datetime(midnight)
+        moon = self.eph['moon']
+
+        # Topocentric distance from the observer to the Moon's center
+        distance_km = self.observer.at(t).observe(moon).apparent().distance().km
+        return moon_angular_radius(distance_km)
 
 
     def get_visible_times(
