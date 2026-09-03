@@ -305,7 +305,7 @@ class Observer:
 
 
     def get_moon_angular_radius(self, date_str: str) -> float:
-        """Return the Moon's apparent angular radius in arcseconds.
+        """Return the Moon's apparent angular radius in degrees.
 
         Evaluated at solar noon + 12h (local midnight) using the topocentric distance from the observer to the Moon's center, so the result matches what a ground-based observer actually sees.
 
@@ -313,7 +313,7 @@ class Observer:
             date_str: Local date in ``YYYY-MM-DD`` format.
 
         Returns:
-            Apparent angular radius of the Moon in arcseconds.
+            Apparent angular radius of the Moon in degrees.
         """
         # Get solar noon and add 12 hours for midnight observation
         solar_noon = self.get_solarnoon(date_str)
