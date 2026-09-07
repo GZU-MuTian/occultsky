@@ -107,9 +107,9 @@ class Observer:
 
 
     def get_twilight(self, date_str: str) -> list[datetime]:
-        """Return astronomical twilight times for the given local date.
+        """Return twilight times for the given local date.
 
-        Searches within solar noon ± 1 day for astronomical dawn and dusk.
+        Searches within solar noon ± 1 day for dawn and dusk (the sun crossing 12° below the horizon).
 
         Args:
             date_str: Local date in ``YYYY-MM-DD`` format.
@@ -130,15 +130,17 @@ class Observer:
         t1 = self.ts.from_datetime(end)
         times, events = almanac.find_discrete(t0, t1, f)
 
-        # Collect dusk and dawn times separately
+        # Collect dusk and dawn times separately.
+        # dark_twilight_day codes: 0 = night (< -18°), 1 = astronomical twilight (-18° to -12°), 2 = nautical twilight (-12° to -6°).
+        # The 1 <-> 2 transition marks the sun crossing 12° below the horizon.
         dusks = []
         dawns = []
         previous_e = f(t0).item()
         for ti, ei in zip(times, events):
             local_dt = ti.astimezone(self.tz)
-            if previous_e == 0 and ei == 1:
+            if previous_e == 1 and ei == 2:
                 dawns.append(local_dt)
-            elif previous_e == 1 and ei == 0:
+            elif previous_e == 2 and ei == 1:
                 dusks.append(local_dt)
             previous_e = ei
 
