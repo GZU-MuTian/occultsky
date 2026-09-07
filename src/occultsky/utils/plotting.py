@@ -9,6 +9,7 @@ from typing import Any, Optional
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 
 from ..main import Observer
 
@@ -177,8 +178,14 @@ def draw_timeline(
                 t.strftime("%H:%M"), f"{name} set", color, "top",
             )
 
-    # Color legend for bodies
-    handles = [Line2D([0], [0], color=_BODY_COLORS[i], lw=2, label=name) for i, (name, _, _) in enumerate(bodies)]
+    # Color legend: night band plus bodies
+    handles = [
+        Patch(
+            facecolor=_NIGHT_BAND_COLOR, alpha=_NIGHT_BAND_ALPHA,
+            label="Night",
+        ),
+    ]
+    handles += [Line2D([0], [0], color=_BODY_COLORS[i], lw=2, label=name) for i, (name, _, _) in enumerate(bodies)]
     ax.legend(handles=handles, loc="best", bbox_to_anchor=(1.0, 0.98), fontsize=10, framealpha=0.9)
 
     if output:
