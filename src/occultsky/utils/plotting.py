@@ -22,6 +22,8 @@ _NIGHT_BAND_ALPHA = 0.12
 # Axes-fraction margin left empty above and below the night band
 _NIGHT_BAND_MARGIN = 0.35
 _SOLAR_NOON_COLOR = "#CC6600"
+# Axes-fraction blank left above and below the solar-noon line
+_SOLAR_NOON_MARGIN = 0.2
 
 # Vertical geometry (data units, axis line at y=0)
 _MARKER_SIZE = 6
@@ -83,6 +85,18 @@ def draw_timeline(
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d %H:%M", tz=observer.tz))
     ax.tick_params(axis="x", which="major", labelsize=12)
 
+    # Timezone note as the time-axis label.
+    z = solar_noon.strftime('%z')
+    tz_str = f"UTC{z[:3]}:{z[3:5]}"
+    ax.set_xlabel(f"Local Mean Time ({tz_str})", loc="right", fontsize=9, color="gray")
+
+    # Title
+    lat = observer.topos.latitude.degrees
+    lon = observer.topos.longitude.degrees
+    lat_str = f"{abs(lat):.2f}°{'N' if lat >= 0 else 'S'}"
+    lon_str = f"{abs(lon):.2f}°{'E' if lon >= 0 else 'W'}"
+    ax.set_title(f"{date_str} ({lat_str}, {lon_str})", fontsize=16)
+
     # Night periods: semi-transparent bands centered on the axis line.
     previous_dusk, dawn, dusk, next_dawn = observer.get_twilight(date_str)
     night_bands = [(previous_dusk, dawn), (dusk, next_dawn)]
@@ -93,10 +107,11 @@ def draw_timeline(
             color=_NIGHT_BAND_COLOR, alpha=_NIGHT_BAND_ALPHA, zorder=0,
         )
 
-    # True solar noon marker: vertical line + label on the axis
+    # True solar noon marker: dashed line with blank margins + label above it
     x_noon = mdates.date2num(solar_noon)
-    ax.vlines(x_noon, -1.4, 1.4, color=_SOLAR_NOON_COLOR, linewidth=1, linestyle="--", zorder=2)
-    ax.text(x_noon, 1.48, f"Solar noon {solar_noon.strftime('%H:%M')}", color=_SOLAR_NOON_COLOR, fontsize=12, ha="center", va="bottom", zorder=4)
+    ax.axvline(x_noon, ymin=_SOLAR_NOON_MARGIN, ymax=1 - _SOLAR_NOON_MARGIN, color=_SOLAR_NOON_COLOR, linewidth=1, linestyle="--", zorder=2)
+    # Label lives in the blank band above the line (x in data, y in axes fraction)
+    ax.text(x_noon, 1 - _SOLAR_NOON_MARGIN, f"Solar noon {solar_noon.strftime('%H:%M')}", color=_SOLAR_NOON_COLOR, fontsize=14, ha="center", va="bottom", transform=ax.get_xaxis_transform(), zorder=4)
 
     # bodies: list[tuple[str, str, list[datetime], list[datetime]]] = [
     #     ("Moon", _MOON_COLOR, observer.get_moonrise(date_str), observer.get_moonset(date_str)),
@@ -157,15 +172,6 @@ def draw_timeline(
     #     )
 
 
-
-    # Timezone (LMT) annotation in the upper-right corner
-    # offset = observer.tz.utcoffset(None)
-    # hours, remainder = divmod(abs(int(offset.total_seconds())), 3600)
-    # tz_str = f"UTC{'+' if offset >= timedelta(0) else '-'}{hours:02d}:{remainder // 60:02d} (LMT)"
-    # ax.annotate(tz_str, xy=(1.0, 1.0), xycoords="axes fraction",
-    #             xytext=(0, -4), textcoords="offset points",
-    #             ha="right", va="top", fontsize=8, color="gray")
-
     # Color legend for bodies, placed below the timezone annotation
     # handles = [Line2D([0], [0], color=color, lw=2, label=name) for name, color, _, _ in bodies]
     # ax.legend(handles=handles, loc="upper right", bbox_to_anchor=(1.0, 0.86),
@@ -173,12 +179,7 @@ def draw_timeline(
 
 
 
-    # Title
-    # lat = observer.topos.latitude.degrees
-    # lon = observer.topos.longitude.degrees
-    # lat_str = f"{abs(lat):.1f}°{'N' if lat >= 0 else 'S'}"
-    # lon_str = f"{abs(lon):.1f}°{'E' if lon >= 0 else 'W'}"
-    # ax.set_title(f"{date_str} ({lat_str}, {lon_str})", fontsize=12)
+
 
     if output:
         fig.savefig(output, dpi=300, bbox_inches="tight")
