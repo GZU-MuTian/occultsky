@@ -3,7 +3,7 @@ Chart drawing helpers: the night timeline and Stellarium constellation charts.
 """
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Optional
 
 import matplotlib.dates as mdates
@@ -15,22 +15,59 @@ from ..main import Observer
 logger = logging.getLogger(__name__)
 
 # Body colors: Moon fixed silver, planets from matplotlib default palette
-_MOON_COLOR = "#808080"
-_PLANET_COLORS = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2"]
+_BODY_COLORS = [
+    "#808080",
+    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+    "#9467bd", "#8c564b", "#e377c2", "#17becf",
+]
 _NIGHT_BAND_COLOR = "midnightblue"
 _NIGHT_BAND_ALPHA = 0.12
 # Axes-fraction margin left empty above and below the night band
-_NIGHT_BAND_MARGIN = 0.35
+_NIGHT_BAND_MARGIN = 0.37
 _SOLAR_NOON_COLOR = "#CC6600"
 # Axes-fraction blank left above and below the solar-noon line
-_SOLAR_NOON_MARGIN = 0.2
+_SOLAR_NOON_MARGIN = 0.1
 
-# Vertical geometry (data units, axis line at y=0)
-_MARKER_SIZE = 6
-# Two staggered label levels per side to avoid overlap
-_RISE_LEVELS = (0.75, 1.15)
-_SET_LEVELS = (-0.75, -1.15)
-_LABEL_GAP = 0.18
+# Vertical geometry (axis line at y=0)
+_MARKER_SIZE = 8
+# Four staggered label levels per side to avoid overlap, as axes
+# fractions of the axes height (0.5 is the axis line)
+_RISE_LEVELS = (0.58, 0.68, 0.78, 0.88)
+_SET_LEVELS = (0.42, 0.32, 0.22, 0.12)
+# Axes-fraction gap between the time line and the body line of a label
+_LABEL_GAP = 0.04
+# Label typography (pt)
+_TIME_FONTSIZE = 14
+_BODY_FONTSIZE = 14
+
+
+def add_timestamp(
+    ax: plt.Axes,
+    time: datetime,
+    level: float,
+    time_str: str,
+    body_str: str,
+    color: str,
+    va: str,
+) -> None:
+    """Add a milestone timestamp: a colored dot on the axis plus a two-line label.
+
+    ``level`` is an axes fraction of the axes height (0.5 = the axis line); the body label sits one ``_LABEL_GAP`` away, above for ``va="bottom"`` and below for ``va="top"``.
+    """
+    x = mdates.date2num(time)
+    trans = ax.get_xaxis_transform()
+    ax.plot(x, 0, "o", color=color, markersize=_MARKER_SIZE, zorder=3)
+    ax.text(
+        x, level, time_str,
+        color=color, fontweight="bold", fontsize=_TIME_FONTSIZE,
+        ha="center", va=va, transform=trans, zorder=4,
+    )
+    offset = -_LABEL_GAP if va == "bottom" else _LABEL_GAP
+    ax.text(
+        x, level + offset, body_str,
+        color=color, fontsize=_BODY_FONTSIZE,
+        ha="center", va=va, transform=trans, zorder=4,
+    )
 
 
 def draw_timeline(
@@ -60,7 +97,7 @@ def draw_timeline(
     )
 
     # Create figure
-    fig, ax = plt.subplots(figsize=(14, 3.5), layout="constrained")
+    fig, ax = plt.subplots(figsize=(14, 5), layout="constrained")
 
     # Compute time window: solar noon ± 1 day
     solar_noon = observer.get_solarnoon(date_str)
@@ -72,7 +109,7 @@ def draw_timeline(
 
     # Set axis limits and remove y-axis
     ax.set_xlim(x_min, x_max)
-    ax.set_ylim(-1.55, 1.6)
+    ax.set_ylim(-2.8, 2.8)
     ax.set_yticks([])
 
     # Single-axis figure
@@ -88,7 +125,7 @@ def draw_timeline(
     # Timezone note as the time-axis label.
     z = solar_noon.strftime('%z')
     tz_str = f"UTC{z[:3]}:{z[3:5]}"
-    ax.set_xlabel(f"Local Mean Time ({tz_str})", loc="right", fontsize=9, color="gray")
+    ax.set_xlabel(f"Local Mean Time ({tz_str})", loc="right", fontsize=10, color="gray")
 
     # Title
     lat = observer.topos.latitude.degrees
@@ -113,73 +150,36 @@ def draw_timeline(
     # Label lives in the blank band above the line (x in data, y in axes fraction)
     ax.text(x_noon, 1 - _SOLAR_NOON_MARGIN, f"Solar noon {solar_noon.strftime('%H:%M')}", color=_SOLAR_NOON_COLOR, fontsize=14, ha="center", va="bottom", transform=ax.get_xaxis_transform(), zorder=4)
 
-    # bodies: list[tuple[str, str, list[datetime], list[datetime]]] = [
-    #     ("Moon", _MOON_COLOR, observer.get_moonrise(date_str), observer.get_moonset(date_str)),
-    # ]
-    # for i, planet in enumerate(planets):
-    #     color = _PLANET_COLORS[i % len(_PLANET_COLORS)]
-    #     bodies.append((
-    #         planet.capitalize(),
-    #         color,
-    #         observer.get_planet_rise(planet, date_str),
-    #         observer.get_planet_set(planet, date_str),
-    #     ))
+    # Bodies: Moon and optionally planets; colors derive from list order
+    bodies: list[tuple[str, list[datetime], list[datetime]]] = [
+        ("Moon", observer.get_moonrise(date_str), observer.get_moonset(date_str)),
+    ]
+    for planet in planets:
+        bodies.append((
+            planet.capitalize(),
+            observer.get_planet_rise(planet, date_str),
+            observer.get_planet_set(planet, date_str),
+        ))
 
+    # Milestone markers per body: colored dot + bold time + body label.
+    for i, (name, rises, sets) in enumerate(bodies):
+        color = _BODY_COLORS[i]
+        rise_level = _RISE_LEVELS[i % len(_RISE_LEVELS)]
+        set_level = _SET_LEVELS[i % len(_SET_LEVELS)]
+        for t in sorted(rises):
+            add_timestamp(
+                ax, t, rise_level,
+                t.strftime("%H:%M"), f"{name} rise", color, "bottom",
+            )
+        for t in sorted(sets):
+            add_timestamp(
+                ax, t, set_level,
+                t.strftime("%H:%M"), f"{name} set", color, "top",
+            )
 
-
-
-    # Collect in-window events, sorted chronologically per side
-    # rise_events: list[tuple[datetime, str, str]] = []
-    # set_events: list[tuple[datetime, str, str]] = []
-    # for name, color, rises, sets in bodies:
-    #     for t in rises:
-    #         if window_start <= t <= window_end:
-    #             rise_events.append((t, name, color))
-    #     for t in sets:
-    #         if window_start <= t <= window_end:
-    #             set_events.append((t, name, color))
-    # rise_events.sort(key=lambda e: e[0])
-    # set_events.sort(key=lambda e: e[0])
-
-    # Milestone markers: colored dot + bold time + body label
-    # for i, (t, name, color) in enumerate(rise_events):
-    #     x = mdates.date2num(t)
-    #     level = _RISE_LEVELS[i % len(_RISE_LEVELS)]
-    #     ax.plot(x, 0, "o", color=color, markersize=_MARKER_SIZE, zorder=3)
-    #     ax.text(
-    #         x, level, t.strftime("%H:%M"),
-    #         color=color, fontweight="bold", fontsize=8,
-    #         ha="center", va="bottom", zorder=4,
-    #     )
-    #     ax.text(
-    #         x, level - _LABEL_GAP, f"{name} rise",
-    #         color=color, fontsize=7,
-    #         ha="center", va="bottom", zorder=4,
-    #     )
-    # for i, (t, name, color) in enumerate(set_events):
-    #     x = mdates.date2num(t)
-    #     level = _SET_LEVELS[i % len(_SET_LEVELS)]
-    #     ax.plot(x, 0, "o", color=color, markersize=_MARKER_SIZE, zorder=3)
-    #     ax.text(
-    #         x, level, t.strftime("%H:%M"),
-    #         color=color, fontweight="bold", fontsize=8,
-    #         ha="center", va="top", zorder=4,
-    #     )
-    #     ax.text(
-    #         x, level + _LABEL_GAP, f"{name} set",
-    #         color=color, fontsize=7,
-    #         ha="center", va="top", zorder=4,
-    #     )
-
-
-    # Color legend for bodies, placed below the timezone annotation
-    # handles = [Line2D([0], [0], color=color, lw=2, label=name) for name, color, _, _ in bodies]
-    # ax.legend(handles=handles, loc="upper right", bbox_to_anchor=(1.0, 0.86),
-    #           fontsize=8, framealpha=0.9)
-
-
-
-
+    # Color legend for bodies
+    handles = [Line2D([0], [0], color=_BODY_COLORS[i], lw=2, label=name) for i, (name, _, _) in enumerate(bodies)]
+    ax.legend(handles=handles, loc="best", bbox_to_anchor=(1.0, 0.98), fontsize=10, framealpha=0.9)
 
     if output:
         fig.savefig(output, dpi=300, bbox_inches="tight")
