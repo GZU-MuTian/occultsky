@@ -83,7 +83,7 @@ def timeline(
 
 
 @app.command()
-def skyview(
+def preview(
     date: str = typer.Argument(help="Local date in YYYY-MM-DD format"),
     lat: float = typer.Option(..., help="Latitude in degrees (north positive)"),
     lon: float = typer.Option(..., help="Longitude in degrees (east positive)"),
@@ -107,22 +107,28 @@ def skyview(
         None, "--output", "-o", help="Save to file instead of showing window"
     ),
     stars: bool = typer.Option(
-        False, help="Show stars"
+        False, help="Show stars and their names"
     ),
-    star_names: bool = typer.Option(
-        False, help="Show star names"
+    constellation: bool = typer.Option(
+        False, help="Show constellation lines"
     ),
-    constellation_lines: bool = typer.Option(
-        False, help="Show constellations"
+    asterism: bool = typer.Option(
+        False, help="Show asterism lines"
+    ),
+    mansions: bool = typer.Option(
+        False, help="Show lunar mansions"
+    ),
+    skyculture: str = typer.Option(
+        "chinese", help="Stellarium skyculture for constellation lines and star names"
     ),
 ) -> None:
-    """Draw a sky view chart of the Moon's nightly track plus any planets."""
-    from .utils.plotting import draw_skyview
+    """Draw a preview chart of the Moon's nightly track plus any planets."""
+    from .utils.plotting import draw_preview
 
     planet_list = [p.strip() for p in planets.split(",") if p.strip()] if planets else []
 
     try:
-        draw_skyview(
+        draw_preview(
             lat=lat,
             lon=lon,
             elevation=elevation,
@@ -134,8 +140,10 @@ def skyview(
             skyfield_data=skyfield_data,
             ephemeris=ephemeris,
             stars=stars,
-            star_names=star_names,
-            constellation_lines=constellation_lines,
+            constellation=constellation,
+            asterism=asterism,
+            mansions=mansions,
+            skyculture=skyculture,
         )
     except (ValueError, KeyError) as e:
         logger.error("%s", e)
