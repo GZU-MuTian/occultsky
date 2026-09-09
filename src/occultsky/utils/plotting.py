@@ -237,6 +237,27 @@ def add_moon_track(
     )
 
 
+def add_planet_track(
+    ax: WCSAxes,
+    coordinates: list[tuple[float, float]],
+    color: str,
+) -> None:
+    """Draw one planet's nightly positions as overlapping dots.
+
+    Args:
+        ax: WCS axes to draw on.
+        coordinates: ``(ra, dec)`` tuples in degrees, as returned by ``Observer.get_radec``.
+        color: Color of the dots.
+    """
+    track_ra = np.array([item[0] for item in coordinates], dtype=float)
+    track_dec = np.array([item[1] for item in coordinates], dtype=float)
+    ax.plot(
+        track_ra, track_dec, "o",
+        color=color, markersize=4,
+        transform=ax.get_transform("world"),
+    )
+
+
 def draw_skyview(
     lat: float,
     lon: float,
@@ -264,7 +285,7 @@ def draw_skyview(
         lon: Longitude in degrees (east positive).
         elevation: Elevation above sea level in meters.
         date_str: Local date in ``YYYY-MM-DD`` format.
-        planets: Not drawn yet; kept for signature compatibility.
+        planets: Optional planet names drawn alongside the Moon (e.g. ``['mars', 'jupiter']``).
         interval: Sampling step in minutes (default: 15).
         projection: WCS projection code (default: ``STG``).
         output: If provided, save to this file path instead of showing.
@@ -300,6 +321,7 @@ def draw_skyview(
 
     fig = plt.figure(figsize=(18, 9))
 
+    # Figure title
     lat_deg = observer.topos.latitude.degrees
     lon_deg = observer.topos.longitude.degrees
     lat_str = f"{abs(lat_deg):.1f}°{'N' if lat_deg >= 0 else 'S'}"
@@ -308,23 +330,70 @@ def draw_skyview(
     # The Moon's disk radius, drawn to scale along the track
     moon_radius = observer.get_moon_angular_radius(date_str)
 
+    # Sample each planet once per night window, bundled with its color
+    planet_tracks = [
+        (
+            planet,
+            observer.get_visible_times(
+                date_str, target=planet, interval=interval
+            ),
+            color,
+        )
+        for planet, color in zip(planets, _BODY_COLORS[1:])
+    ]
+
     for index, times in enumerate(nights):
         # No visible Moon that night: leave the subplot blank.
         if not times:
             ax = fig.add_subplot(1, 2, index + 1)
             ax.set_axis_off()
             continue
+
         coordinates = observer.get_radec(times, target="moon")
+
+        # Find the approximate center of the Moon track
         center = coordinates[len(times) // 2]
         wcs = build_wcs(projection, center, _SKYVIEW_FOV, _SKYVIEW_SIZE)
+
+        # Add the WCS axes to the figure
         ax = fig.add_subplot(1, 2, index + 1, projection=wcs)
         ax.set_xlim(-0.5, _SKYVIEW_SIZE - 0.5)
         ax.set_ylim(-0.5, _SKYVIEW_SIZE - 0.5)
+
+        # Grid and axis labels
         for coord in ax.coords:
             coord.grid(True, color="#9a9a9a", alpha=0.35, linestyle=":", linewidth=0.6)
         ax.coords[0].set_axislabel("Right ascension (ICRS)")
         ax.coords[1].set_axislabel("Declination (ICRS)")
+
+        # Add the Moon's track as a filled band
         add_moon_track(ax, coordinates, angular_radius=moon_radius)
+
+        # Add the planet tracks as overlapping dots
+        for planet, planet_nights, color in planet_tracks:
+            planet_times = planet_nights[index]
+            if not planet_times:
+                continue
+            add_planet_track(
+                ax,
+                observer.get_radec(planet_times, target=planet),
+                color=color,
+            )
+
+    # One shared legend for both subplots
+    handles = [
+        Patch(color=_BODY_COLORS[0], alpha=0.3, label="Moon"),
+    ]
+    for planet, _, color in planet_tracks:
+        handles.append(
+            Line2D(
+                [0], [0],
+                color=color,
+                marker="o", markersize=4,
+                label=planet.capitalize(),
+            )
+        )
+    fig.legend(handles=handles, loc="upper right", bbox_to_anchor=(0.99, 0.97))
 
     if output:
         fig.savefig(output, dpi=300, bbox_inches="tight")
