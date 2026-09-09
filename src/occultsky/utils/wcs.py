@@ -5,23 +5,18 @@ Set the WCS information manually by setting properties of the WCS object.
 from astropy.wcs import WCS
 
 
-DEFAULT_PROJECTION = "STG"
-DEFAULT_FOV = 30.0
-DEFAULT_SIZE = 800
-
-
 def build_wcs(
-    projection: str = DEFAULT_PROJECTION,
-    center: tuple[float, float] = (0.0, 0.0),
-    fov: float = DEFAULT_FOV,
-    size: int = DEFAULT_SIZE,
+    projection: str,
+    center: tuple[float, float],
+    fov: float,
+    size: int,
 ) -> WCS:
     """
     Build a WCS for a square, zenithal sky chart.
 
     Args:
         projection: WCS projection code in uppercase FITS form. Use a zenithal code such as ``STG``, ``TAN``, ``SIN`` or ``ZEA``. Do **not** pass a full-sky code (``AIT``, ``CAR``, ``CEA``, ``MOL``): a square grid cannot frame the whole sky and the result comes out distorted.
-        center: ``(ra_degrees, dec_degrees)`` placed at the middle of the chart, ICRS. Defaults to ``(0, 0)``.
+        center: ``(ra_degrees, dec_degrees)`` placed at the middle of the chart, ICRS.
         fov: Width of the chart in degrees.
         size: Side length of the square chart in pixels.
 
