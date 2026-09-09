@@ -6,8 +6,12 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
+from astropy.visualization.wcsaxes import WCSAxes
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
+import numpy as np
+from shapely import affinity
+from shapely.geometry import LineString
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
@@ -40,6 +44,9 @@ _LABEL_GAP = 0.04
 # Label typography (pt)
 _TIME_FONTSIZE = 14
 _BODY_FONTSIZE = 14
+# Skyview chart geometry: square canvas field of view (deg) and pixel size
+_SKYVIEW_FOV = 6
+_SKYVIEW_SIZE = 800
 
 
 def add_timestamp(
@@ -195,4 +202,132 @@ def draw_timeline(
         plt.show()
 
 
+def add_moon_track(
+    ax: WCSAxes,
+    coordinates: list[tuple[float, float]],
+    angular_radius: float,
+) -> None:
+    """Draw the sky region the Moon's disk sweeps along its nightly track.
 
+    The region is a filled band of width ``2 * angular_radius`` around the sampled ICRS path.
+
+    Args:
+        ax: WCS axes to draw on.
+        coordinates: ``(ra, dec)`` tuples in degrees, as returned by ``Observer.get_radec``.
+        angular_radius: Apparent angular radius of the Moon in degrees, as returned by ``Observer.get_moon_angular_radius``.
+    """
+    track_ra = np.degrees(
+        np.unwrap(np.radians([item[0] for item in coordinates]))
+    )
+    track_dec = np.array([item[1] for item in coordinates], dtype=float)
+
+    # A degree of right ascension spans only cos(dec) degrees of arc on the sky, so buffering raw (ra, dec) coordinates would squash the disk horizontally by cos(dec). Compress the path in RA first (median dec gives a local plane approximation, good to <1% over one night), buffer, then stretch back: the band keeps the disk's true angular size on the celestial sphere. The stretch must be anchored at the origin, or the path itself would shift.
+    cos_dec = np.cos(np.radians(float(np.median(track_dec))))
+    envelope = LineString(zip(track_ra * cos_dec, track_dec)).buffer(
+        angular_radius, quad_segs=32
+    )
+    envelope = affinity.scale(
+        envelope, xfact=1.0 / cos_dec, yfact=1.0, origin=(0.0, 0.0)
+    )
+    xs, ys = envelope.exterior.xy
+    ax.fill(
+        xs, ys,
+        color=_BODY_COLORS[0], alpha=0.3,
+        transform=ax.get_transform("world"),
+    )
+
+
+def draw_skyview(
+    lat: float,
+    lon: float,
+    elevation: float,
+    date_str: str,
+    planets: list[str] = [],
+    interval: int = 15,
+    projection: str = "STG",
+    output: Optional[str] = None,
+    stars: bool = False,
+    star_names: bool = False,
+    constellation_lines: bool = False,
+    **observer_kwargs: Any,
+) -> None:
+    """Draw a two-subplot sky view chart of the Moon's nightly tracks.
+
+    One square WCS-projected subplot per night window of ``date_str``: the
+    previous night (``previous_dusk`` to ``dawn``) on the left, the night of
+    ``date_str`` (``dusk`` to ``next_dawn``) on the right. Each subplot centers
+    on the midpoint of its own Moon track, so the whole track fits in the
+    6° field of view. A night with no visible Moon is left blank.
+
+    Args:
+        lat: Latitude in degrees (north positive).
+        lon: Longitude in degrees (east positive).
+        elevation: Elevation above sea level in meters.
+        date_str: Local date in ``YYYY-MM-DD`` format.
+        planets: Not drawn yet; kept for signature compatibility.
+        interval: Sampling step in minutes (default: 15).
+        projection: WCS projection code (default: ``STG``).
+        output: If provided, save to this file path instead of showing.
+        stars: Not implemented here; passing ``True`` raises ``ValueError``.
+        star_names: Not implemented here; passing ``True`` raises ``ValueError``.
+        constellation_lines: Not implemented here; passing ``True`` raises
+            ``ValueError``.
+        **observer_kwargs: Extra keyword arguments forwarded to ``Observer``
+            (e.g. ``skyfield_data``, ``ephemeris``).
+
+    Raises:
+        ValueError: If ``stars``, ``star_names`` or ``constellation_lines`` is
+            enabled.
+    """
+    # Star and constellation layers are drawn by utils.skyculture; they are
+    # not part of this chart yet, so fail loudly instead of dropping them.
+    if stars or star_names or constellation_lines:
+        raise ValueError(
+            "stars/star_names/constellation_lines are not implemented in the "
+            "skyview chart yet; see utils.skyculture for constellation charts"
+        )
+
+    from .wcs import build_wcs
+
+    observer = Observer(
+        lat=lat, lon=lon, elevation=elevation, **observer_kwargs
+    )
+
+    # One subplot per night window. Each subplot centers on the midpoint of its own Moon track.
+    nights = observer.get_visible_times(
+        date_str, target="moon", interval=interval
+    )
+
+    fig = plt.figure(figsize=(18, 9))
+
+    lat_deg = observer.topos.latitude.degrees
+    lon_deg = observer.topos.longitude.degrees
+    lat_str = f"{abs(lat_deg):.1f}°{'N' if lat_deg >= 0 else 'S'}"
+    lon_str = f"{abs(lon_deg):.1f}°{'E' if lon_deg >= 0 else 'W'}"
+    fig.suptitle(f"{date_str} ({lat_str}, {lon_str})", fontsize=14)
+    # The Moon's disk radius, drawn to scale along the track
+    moon_radius = observer.get_moon_angular_radius(date_str)
+
+    for index, times in enumerate(nights):
+        # No visible Moon that night: leave the subplot blank.
+        if not times:
+            ax = fig.add_subplot(1, 2, index + 1)
+            ax.set_axis_off()
+            continue
+        coordinates = observer.get_radec(times, target="moon")
+        center = coordinates[len(times) // 2]
+        wcs = build_wcs(projection, center, _SKYVIEW_FOV, _SKYVIEW_SIZE)
+        ax = fig.add_subplot(1, 2, index + 1, projection=wcs)
+        ax.set_xlim(-0.5, _SKYVIEW_SIZE - 0.5)
+        ax.set_ylim(-0.5, _SKYVIEW_SIZE - 0.5)
+        for coord in ax.coords:
+            coord.grid(True, color="#9a9a9a", alpha=0.35, linestyle=":", linewidth=0.6)
+        ax.coords[0].set_axislabel("Right ascension (ICRS)")
+        ax.coords[1].set_axislabel("Declination (ICRS)")
+        add_moon_track(ax, coordinates, angular_radius=moon_radius)
+
+    if output:
+        fig.savefig(output, dpi=300, bbox_inches="tight")
+        logger.info("Skyview saved to %s", output)
+    else:
+        plt.show()

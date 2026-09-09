@@ -334,8 +334,8 @@ class Observer:
         date_str: str,
         target: str = 'moon',
         interval: int = 15
-    ) -> list[datetime]:
-        """Return the times when the target is visible on the given local date.
+    ) -> tuple[list[datetime], list[datetime]]:
+        """Return the visible times of the target on the previous night and on the night of the given local date.
 
         Samples the [previous_dusk, dawn] and [dusk, next_dawn] windows at the given interval and keeps the points where the target is above the horizon.
 
@@ -345,7 +345,7 @@ class Observer:
             interval: Time interval for sampling in minutes (default: 15).
 
         Returns:
-            List of timezone-aware datetimes when the target is visible. Returns empty list if the target is not visible in either window.
+            Two lists of timezone-aware datetimes. A list is empty when the target stays below the horizon in that window.
 
         Raises:
             KeyError: If target name is not found in ephemeris.
@@ -365,15 +365,16 @@ class Observer:
 
         # Sample each night window at the given interval and keep the points where the target is up.
         step = timedelta(minutes=interval)
-        result = []
+        results: list[list[datetime]] = []
         for window_start, window_end in ((previous_dusk, dawn), (dusk, next_dawn)):
             n = (window_end - window_start) // step  # number of steps in the window
             samples = [window_start + k * step for k in range(n + 1)]
             t = self.ts.from_datetimes(samples)
             above_horizon = f(t)
-            result.extend(dt for dt, visible in zip(samples, above_horizon) if visible)
+            # Visible samples only; an empty list marks a night the target never rose.
+            results.append([dt for dt, visible in zip(samples, above_horizon) if visible])
 
-        return result
+        return results[0], results[1]
 
 
     def get_altaz(
