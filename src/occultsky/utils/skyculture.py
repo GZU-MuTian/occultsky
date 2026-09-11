@@ -19,26 +19,6 @@ _SKYCULTURE_FILE = "skyculture_{culture}.json"
 
 
 @dataclass(frozen=True)
-class StarCatalog:
-    """A catalog of stars with their IDs, right ascensions, and declinations."""
-    id: np.ndarray  # Hipparcos number
-    ra: np.ndarray   # degrees
-    dec: np.ndarray  # degrees
-
-    def __len__(self):
-        return len(self.id)
-
-    def lookup(self, hips: tuple[int, ...]) -> tuple[np.ndarray, np.ndarray]:
-        """Return ``(ra, dec)`` arrays for the given HIP numbers.
-
-        Unknown IDs are silently skipped.
-        """
-        index = {h: i for i, h in enumerate(self.id)}
-        slots = [index[h] for h in hips if h in index]
-        return self.ra[slots], self.dec[slots]
-
-
-@dataclass(frozen=True)
 class Constellation:
     """A constellation figure with its lines as tuples of HIP numbers."""
     name: str
@@ -77,20 +57,6 @@ class Skyculture:
         with load.open(url, filename=filename) as f:
             self.skyculture = json.load(f)
 
-
-    def stars(self) -> StarCatalog:
-        """
-        Return a StarCatalog object containing the stars.
-        """
-        # Filter stars brighter than magnitude 6.0
-        bright_stars = self.hips[self.hips['magnitude'] <= 6.0]
-        
-        return StarCatalog(
-            id=bright_stars.index.values,
-            ra=bright_stars['ra_degrees'].values,
-            dec=bright_stars['dec_degrees'].values,
-        )
-
     def within_validity(self, year: int) -> bool:
         """Check if a year falls within the skyculture's validity range.
         
@@ -121,6 +87,20 @@ class Skyculture:
                 lines=tuple(tuple(r) for r in e.get('lines', [])),
             )
             for e in self.skyculture.get('constellations', [])
+        ]
+
+    def asterisms(self, name_field: str = 'native') -> list[Constellation]:
+        """Return the asterism figures from the skyculture data.
+
+        Args:
+            name_field: Key in each ``common_name`` dict to use as the display name (e.g. ``'native'``, ``'english'``, ``'pronounce'``).
+        """
+        return [
+            Constellation(
+                name=(e.get('common_name') or {}).get(name_field, ''),
+                lines=tuple(tuple(r) for r in e.get('lines', [])),
+            )
+            for e in self.skyculture.get('asterisms', [])
         ]
 
     def mansions(self, name_field: str = 'native') -> NamedStars:

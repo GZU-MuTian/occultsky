@@ -3,7 +3,6 @@ Chart drawing helpers: the night timeline and Stellarium constellation charts.
 """
 
 import logging
-from collections.abc import Collection
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -63,9 +62,6 @@ _SKYVIEW_LINES_ZORDER = 0.3
 _SKYVIEW_STARS_ZORDER = 0.5
 _SKYVIEW_LABELS_ZORDER = 0.8
 _SKYVIEW_MANSIONS_ZORDER = 0.9
-# Star label name fields, in the order they are preferred
-_SKYVIEW_NAME_FIELDS = ("native", "byname", "english", "pronounce", "IPA")
-# Faintest star magnitude drawn by the star layer: the naked-eye limit
 
 _NAN = np.array([np.nan])
 
@@ -285,47 +281,20 @@ def add_stars(
 ) -> None:
     """Draw the chart's stars as dots.
 
-    Only stars brighter than magnitude 6.0 are drawn.
+    Only stars brighter than magnitude 6.5 are drawn.
 
     Args:
         ax: WCS axes to draw on.
         culture: The skyculture with integrated star data.
     """
-    star_catalog = culture.stars()
-    if len(star_catalog.magnitudes) == 0:
+    bright_stars = culture.hips[culture.hips['magnitude'] <= 6.5]
+    if len(bright_stars) == 0:
         return
     ax.scatter(
-        star_catalog.ra, star_catalog.dec,
+        bright_stars['ra_degrees'].values, bright_stars['dec_degrees'].values,
         s=10,
         color=_SKYVIEW_STAR_COLOR, linewidths=0,
         transform=ax.get_transform("world"), zorder=_SKYVIEW_STARS_ZORDER,
-    )
-
-
-def _figure_lines(
-    ax: WCSAxes,
-    culture: Skyculture,
-    figures: Collection[Any],
-    color: str,
-) -> None:
-    """Draw one polyline per ``lines`` entry of each figure, in one color."""
-    stars = culture.stars()
-    xs: list[np.ndarray] = []
-    ys: list[np.ndarray] = []
-    for figure in figures:
-        for line in figure.lines:
-            ra, dec = stars.lookup(line)
-            if len(ra) < 2:
-                continue
-            xs.extend([ra, _NAN])
-            ys.extend([dec, _NAN])
-    if not xs:
-        return
-    ax.plot(
-        np.concatenate(xs), np.concatenate(ys),
-        color=color, linewidth=1.0,
-        transform=ax.get_transform("world"), zorder=_SKYVIEW_LINES_ZORDER,
-        solid_capstyle="round",
     )
 
 
@@ -342,7 +311,27 @@ def add_constellation_lines(
         ax: WCS axes to draw on.
         culture: The skyculture with integrated star data.
     """
-    _figure_lines(ax, culture, culture.constellations(), _SKYVIEW_LINE_COLOR)
+    figures = culture.constellations()
+    hips = culture.hips
+    xs: list[np.ndarray] = []
+    ys: list[np.ndarray] = []
+    for figure in figures:
+        for line in figure.lines:
+            # Use pandas index for fast lookup
+            valid_hips = [h for h in line if h in hips.index]
+            if len(valid_hips) < 2:
+                continue
+            rows = hips.loc[valid_hips]
+            xs.extend([rows['ra_degrees'].values, _NAN])
+            ys.extend([rows['dec_degrees'].values, _NAN])
+    if not xs:
+        return
+    ax.plot(
+        np.concatenate(xs), np.concatenate(ys),
+        color=_SKYVIEW_LINE_COLOR, linewidth=1.0,
+        transform=ax.get_transform("world"), zorder=_SKYVIEW_LINES_ZORDER,
+        solid_capstyle="round",
+    )
 
 
 def add_asterism_lines(
@@ -355,7 +344,27 @@ def add_asterism_lines(
         ax: WCS axes to draw on.
         culture: The skyculture with integrated star data.
     """
-    _figure_lines(ax, culture, culture.asterisms, _SKYVIEW_ASTERISM_COLOR)
+    figures = culture.asterisms()
+    hips = culture.hips
+    xs: list[np.ndarray] = []
+    ys: list[np.ndarray] = []
+    for figure in figures:
+        for line in figure.lines:
+            # Use pandas index for fast lookup
+            valid_hips = [h for h in line if h in hips.index]
+            if len(valid_hips) < 2:
+                continue
+            rows = hips.loc[valid_hips]
+            xs.extend([rows['ra_degrees'].values, _NAN])
+            ys.extend([rows['dec_degrees'].values, _NAN])
+    if not xs:
+        return
+    ax.plot(
+        np.concatenate(xs), np.concatenate(ys),
+        color=_SKYVIEW_ASTERISM_COLOR, linewidth=1.0,
+        transform=ax.get_transform("world"), zorder=_SKYVIEW_LINES_ZORDER,
+        solid_capstyle="round",
+    )
 
 
 def add_star_names(
@@ -368,17 +377,20 @@ def add_star_names(
         ax: WCS axes to draw on.
         culture: The skyculture with integrated star data.
     """
-    for hip, fields in culture.star_names.items():
-        slot = culture.star_index.get(hip)
-        if slot is None:
+    star_names = culture.star_names()
+    if len(star_names) == 0:
+        return
+    
+    hips = culture.hips
+    for i, hip in enumerate(star_names.hip):
+        if hip not in hips.index:
             continue
-        label = next(
-            (fields[key] for key in _SKYVIEW_NAME_FIELDS if fields.get(key)), ""
-        )
+        label = star_names.name[i]
         if not label:
             continue
+        row = hips.loc[hip]
         ax.annotate(
-            label, (culture.ra[slot], culture.dec[slot]),
+            label, (row['ra_degrees'], row['dec_degrees']),
             xycoords=ax.get_transform("world"),
             textcoords="offset points", xytext=(3, 3),
             color=_SKYVIEW_STAR_LABEL_COLOR, fontsize=6.5,
@@ -398,22 +410,25 @@ def add_mansions(
         ax: WCS axes to draw on.
         culture: The skyculture with integrated star data.
     """
-    for mansion in culture.mansions:
-        if mansion.hip is None:
+    mansions = culture.mansions()
+    if len(mansions) == 0:
+        return
+    
+    hips = culture.hips
+    for i, hip in enumerate(mansions.hip):
+        if hip not in hips.index:
             continue
-        slot = culture.star_index.get(mansion.hip)
-        if slot is None:
-            continue
+        row = hips.loc[hip]
         ax.plot(
-            culture.ra[slot], culture.dec[slot],
+            row['ra_degrees'], row['dec_degrees'],
             marker="D", markersize=4.5, color=_SKYVIEW_MANSION_COLOR,
             linestyle="none", markeredgecolor="white", markeredgewidth=0.6,
             transform=ax.get_transform("world"), zorder=_SKYVIEW_MANSIONS_ZORDER,
         )
-        label = mansion.display_name("native")
+        label = mansions.name[i]
         if label:
             ax.annotate(
-                label, (culture.ra[slot], culture.dec[slot]),
+                label, (row['ra_degrees'], row['dec_degrees']),
                 xycoords=ax.get_transform("world"),
                 textcoords="offset points", xytext=(0, 6),
                 color=_SKYVIEW_MANSION_COLOR, fontsize=6.5,
