@@ -3,6 +3,7 @@ Chart drawing helpers: the night timeline and Stellarium constellation charts.
 """
 
 import logging
+from collections.abc import Collection
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -16,6 +17,8 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 from ..main import Observer
+from .skyculture import Skyculture
+
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +50,24 @@ _BODY_FONTSIZE = 14
 # Skyview chart geometry: square canvas field of view (deg) and pixel size
 _SKYVIEW_FOV = 6
 _SKYVIEW_SIZE = 800
+
+# Star and constellation layers sit below the Moon band: the sky is the
+# background and the Moon the subject, so the band keeps its default zorder of 1
+_SKYVIEW_STAR_COLOR = "#1a1a1a"
+_SKYVIEW_LINE_COLOR = "#4a7ebb"
+_SKYVIEW_ASTERISM_COLOR = "#c0392b"
+_SKYVIEW_STAR_LABEL_COLOR = "#5a5a5a"
+_SKYVIEW_MANSION_COLOR = "#b8860b"
+_SKYVIEW_LABEL_FONTS = ["DejaVu Sans", "Microsoft YaHei"]
+_SKYVIEW_LINES_ZORDER = 0.3
+_SKYVIEW_STARS_ZORDER = 0.5
+_SKYVIEW_LABELS_ZORDER = 0.8
+_SKYVIEW_MANSIONS_ZORDER = 0.9
+# Star label name fields, in the order they are preferred
+_SKYVIEW_NAME_FIELDS = ("native", "byname", "english", "pronounce", "IPA")
+# Faintest star magnitude drawn by the star layer: the naked-eye limit
+
+_NAN = np.array([np.nan])
 
 
 def add_timestamp(
@@ -258,7 +279,151 @@ def add_planet_track(
     )
 
 
-def draw_skyview(
+def add_stars(
+    ax: WCSAxes,
+    culture: Skyculture,
+) -> None:
+    """Draw the chart's stars as dots.
+
+    Only stars brighter than magnitude 6.0 are drawn.
+
+    Args:
+        ax: WCS axes to draw on.
+        culture: The skyculture with integrated star data.
+    """
+    star_catalog = culture.stars()
+    if len(star_catalog.magnitudes) == 0:
+        return
+    ax.scatter(
+        star_catalog.ra, star_catalog.dec,
+        s=10,
+        color=_SKYVIEW_STAR_COLOR, linewidths=0,
+        transform=ax.get_transform("world"), zorder=_SKYVIEW_STARS_ZORDER,
+    )
+
+
+def _figure_lines(
+    ax: WCSAxes,
+    culture: Skyculture,
+    figures: Collection[Any],
+    color: str,
+) -> None:
+    """Draw one polyline per ``lines`` entry of each figure, in one color."""
+    stars = culture.stars()
+    xs: list[np.ndarray] = []
+    ys: list[np.ndarray] = []
+    for figure in figures:
+        for line in figure.lines:
+            ra, dec = stars.lookup(line)
+            if len(ra) < 2:
+                continue
+            xs.extend([ra, _NAN])
+            ys.extend([dec, _NAN])
+    if not xs:
+        return
+    ax.plot(
+        np.concatenate(xs), np.concatenate(ys),
+        color=color, linewidth=1.0,
+        transform=ax.get_transform("world"), zorder=_SKYVIEW_LINES_ZORDER,
+        solid_capstyle="round",
+    )
+
+
+def add_constellation_lines(
+    ax: WCSAxes,
+    culture: Skyculture,
+) -> None:
+    """Draw the constellation stick figures of a skyculture.
+
+    Each figure is a set of polylines over Hipparcos numbers, as parsed by
+    ``utils.skyculture``.
+
+    Args:
+        ax: WCS axes to draw on.
+        culture: The skyculture with integrated star data.
+    """
+    _figure_lines(ax, culture, culture.constellations(), _SKYVIEW_LINE_COLOR)
+
+
+def add_asterism_lines(
+    ax: WCSAxes,
+    culture: Skyculture,
+) -> None:
+    """Draw the asterism stick figures of a skyculture.
+
+    Args:
+        ax: WCS axes to draw on.
+        culture: The skyculture with integrated star data.
+    """
+    _figure_lines(ax, culture, culture.asterisms, _SKYVIEW_ASTERISM_COLOR)
+
+
+def add_star_names(
+    ax: WCSAxes,
+    culture: Skyculture,
+) -> None:
+    """Label the stars a skyculture names.
+
+    Args:
+        ax: WCS axes to draw on.
+        culture: The skyculture with integrated star data.
+    """
+    for hip, fields in culture.star_names.items():
+        slot = culture.star_index.get(hip)
+        if slot is None:
+            continue
+        label = next(
+            (fields[key] for key in _SKYVIEW_NAME_FIELDS if fields.get(key)), ""
+        )
+        if not label:
+            continue
+        ax.annotate(
+            label, (culture.ra[slot], culture.dec[slot]),
+            xycoords=ax.get_transform("world"),
+            textcoords="offset points", xytext=(3, 3),
+            color=_SKYVIEW_STAR_LABEL_COLOR, fontsize=6.5,
+            ha="left", va="bottom", fontfamily=_SKYVIEW_LABEL_FONTS,
+            zorder=_SKYVIEW_LABELS_ZORDER,
+            annotation_clip=True,
+        )
+
+
+def add_mansions(
+    ax: WCSAxes,
+    culture: Skyculture,
+) -> None:
+    """Mark and label the determining star of each lunar mansion.
+
+    Args:
+        ax: WCS axes to draw on.
+        culture: The skyculture with integrated star data.
+    """
+    for mansion in culture.mansions:
+        if mansion.hip is None:
+            continue
+        slot = culture.star_index.get(mansion.hip)
+        if slot is None:
+            continue
+        ax.plot(
+            culture.ra[slot], culture.dec[slot],
+            marker="D", markersize=4.5, color=_SKYVIEW_MANSION_COLOR,
+            linestyle="none", markeredgecolor="white", markeredgewidth=0.6,
+            transform=ax.get_transform("world"), zorder=_SKYVIEW_MANSIONS_ZORDER,
+        )
+        label = mansion.display_name("native")
+        if label:
+            ax.annotate(
+                label, (culture.ra[slot], culture.dec[slot]),
+                xycoords=ax.get_transform("world"),
+                textcoords="offset points", xytext=(0, 6),
+                color=_SKYVIEW_MANSION_COLOR, fontsize=6.5,
+                ha="center", va="bottom", fontfamily=_SKYVIEW_LABEL_FONTS,
+                zorder=_SKYVIEW_MANSIONS_ZORDER,
+                annotation_clip=True,
+            )
+
+
+def draw_preview(
     lat: float,
     lon: float,
     elevation: float,
@@ -266,19 +431,17 @@ def draw_skyview(
     planets: list[str] = [],
     interval: int = 15,
     projection: str = "STG",
+    fov: float = 6.0,
     output: Optional[str] = None,
     stars: bool = False,
-    star_names: bool = False,
-    constellation_lines: bool = False,
-    **observer_kwargs: Any,
+    constellation: bool = False,
+    asterism: bool = False,
+    mansions: bool = False,
+    skyculture: str = "chinese",
+    skyfield_data: Optional[str] = None,
+    ephemeris: str = 'de441.bsp',
 ) -> None:
-    """Draw a two-subplot sky view chart of the Moon's nightly tracks.
-
-    One square WCS-projected subplot per night window of ``date_str``: the
-    previous night (``previous_dusk`` to ``dawn``) on the left, the night of
-    ``date_str`` (``dusk`` to ``next_dawn``) on the right. Each subplot centers
-    on the midpoint of its own Moon track, so the whole track fits in the
-    6° field of view. A night with no visible Moon is left blank.
+    """Draw a two-subplot preview chart of the Moon's nightly tracks.
 
     Args:
         lat: Latitude in degrees (north positive).
@@ -288,31 +451,24 @@ def draw_skyview(
         planets: Optional planet names drawn alongside the Moon (e.g. ``['mars', 'jupiter']``).
         interval: Sampling step in minutes (default: 15).
         projection: WCS projection code (default: ``STG``).
+        fov: Field of view in degrees for the WCS projection (default: 6.0).
         output: If provided, save to this file path instead of showing.
-        stars: Not implemented here; passing ``True`` raises ``ValueError``.
-        star_names: Not implemented here; passing ``True`` raises ``ValueError``.
-        constellation_lines: Not implemented here; passing ``True`` raises
-            ``ValueError``.
-        **observer_kwargs: Extra keyword arguments forwarded to ``Observer``
-            (e.g. ``skyfield_data``, ``ephemeris``).
-
-    Raises:
-        ValueError: If ``stars``, ``star_names`` or ``constellation_lines`` is
-            enabled.
+        stars: Draw stars down to the naked-eye limit, together with their ``skyculture`` names.
+        constellation: Draw the  constellation stick figures of
+            ``skyculture``.
+        asterism: Draw the asterism stick figures of ``skyculture``.
+        mansions: Mark and label the determining stars of the lunar mansions of ``skyculture``.
+        skyculture: Stellarium skyculture supplying the star names, the constellation lines and the lunar mansions (default: ``chinese``).
+        skyfield_data: Path to Skyfield data directory. Falls back to SKYFIELD_DATA environment variable.
+        ephemeris: JPL ephemeris filename (default: de441.bsp).
     """
-    # Star and constellation layers are drawn by utils.skyculture; they are
-    # not part of this chart yet, so fail loudly instead of dropping them.
-    if stars or star_names or constellation_lines:
-        raise ValueError(
-            "stars/star_names/constellation_lines are not implemented in the "
-            "skyview chart yet; see utils.skyculture for constellation charts"
-        )
-
     from .wcs import build_wcs
 
     observer = Observer(
-        lat=lat, lon=lon, elevation=elevation, **observer_kwargs
+        lat=lat, lon=lon, elevation=elevation,
+        skyfield_data=skyfield_data, ephemeris=ephemeris,
     )
+    culture = Skyculture.load(skyculture, data_dir=skyfield_data)
 
     # One subplot per night window. Each subplot centers on the midpoint of its own Moon track.
     nights = observer.get_visible_times(
@@ -326,7 +482,8 @@ def draw_skyview(
     lon_deg = observer.topos.longitude.degrees
     lat_str = f"{abs(lat_deg):.1f}°{'N' if lat_deg >= 0 else 'S'}"
     lon_str = f"{abs(lon_deg):.1f}°{'E' if lon_deg >= 0 else 'W'}"
-    fig.suptitle(f"{date_str} ({lat_str}, {lon_str})", fontsize=14)
+    fig.suptitle(f"{date_str} ({lat_str}, {lon_str})", fontsize=16)
+
     # The Moon's disk radius, drawn to scale along the track
     moon_radius = observer.get_moon_angular_radius(date_str)
 
@@ -353,7 +510,7 @@ def draw_skyview(
 
         # Find the approximate center of the Moon track
         center = coordinates[len(times) // 2]
-        wcs = build_wcs(projection, center, _SKYVIEW_FOV, _SKYVIEW_SIZE)
+        wcs = build_wcs(projection, center, fov, _SKYVIEW_SIZE)
 
         # Add the WCS axes to the figure
         ax = fig.add_subplot(1, 2, index + 1, projection=wcs)
@@ -365,6 +522,16 @@ def draw_skyview(
             coord.grid(True, color="#9a9a9a", alpha=0.35, linestyle=":", linewidth=0.6)
         ax.coords[0].set_axislabel("Right ascension (ICRS)")
         ax.coords[1].set_axislabel("Declination (ICRS)")
+
+        if constellation:
+            add_constellation_lines(ax, culture)
+        if asterism:
+            add_asterism_lines(ax, culture)
+        if stars:
+            add_stars(ax, culture)
+            add_star_names(ax, culture)
+        if mansions:
+            add_mansions(ax, culture)
 
         # Add the Moon's track as a filled band
         add_moon_track(ax, coordinates, angular_radius=moon_radius)
@@ -393,7 +560,10 @@ def draw_skyview(
                 label=planet.capitalize(),
             )
         )
-    fig.legend(handles=handles, loc="upper right", bbox_to_anchor=(0.99, 0.97))
+    fig.legend(
+        handles=handles, loc="upper right", bbox_to_anchor=(0.99, 0.97),
+        fontsize=10,
+    )
 
     if output:
         fig.savefig(output, dpi=300, bbox_inches="tight")

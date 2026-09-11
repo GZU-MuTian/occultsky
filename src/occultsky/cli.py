@@ -103,6 +103,9 @@ def preview(
     projection: str = typer.Option(
         "STG", help="WCS projection code",
     ),
+    fov: float = typer.Option(
+        6.0, help="Field of view in degrees for the WCS projection"
+    ),
     output: Optional[str] = typer.Option(
         None, "--output", "-o", help="Save to file instead of showing window"
     ),
@@ -136,6 +139,7 @@ def preview(
             planets=planet_list,
             interval=interval,
             projection=projection,
+            fov=fov,
             output=output,
             skyfield_data=skyfield_data,
             ephemeris=ephemeris,
