@@ -483,7 +483,7 @@ def draw_preview(
         lat=lat, lon=lon, elevation=elevation,
         skyfield_data=skyfield_data, ephemeris=ephemeris,
     )
-    culture = Skyculture.load(skyculture, data_dir=skyfield_data)
+    culture = Skyculture(skyculture, skyfield_data=skyfield_data)
 
     # One subplot per night window. Each subplot centers on the midpoint of its own Moon track.
     nights = observer.get_visible_times(
