@@ -254,23 +254,23 @@ def add_moon_track(
     )
 
 
-def add_planet_track(
+def add_planet_position(
     ax: WCSAxes,
-    coordinates: list[tuple[float, float]],
+    coordinate: tuple[float, float],
     color: str,
 ) -> None:
-    """Draw one planet's nightly positions as overlapping dots.
+    """Draw one planet's position as a single solid dot.
+
+    A planet moves little during one night, so one dot marks it: no track line and no ring-style markers.
 
     Args:
         ax: WCS axes to draw on.
-        coordinates: ``(ra, dec)`` tuples in degrees, as returned by ``Observer.get_radec``.
-        color: Color of the dots.
+        coordinate: ``(ra, dec)`` tuple in degrees, as returned by ``Observer.get_radec``.
+        color: Color of the dot.
     """
-    track_ra = np.array([item[0] for item in coordinates], dtype=float)
-    track_dec = np.array([item[1] for item in coordinates], dtype=float)
     ax.plot(
-        track_ra, track_dec, "o",
-        color=color, markersize=4,
+        coordinate[0], coordinate[1], "o",
+        color=color, markersize=5, markeredgecolor="none",
         transform=ax.get_transform("world"),
     )
 
@@ -551,14 +551,14 @@ def draw_preview(
         # Add the Moon's track as a filled band
         add_moon_track(ax, coordinates, angular_radius=moon_radius)
 
-        # Add the planet tracks as overlapping dots
+        # One position dot per planet: its nightly motion is too small for a track
         for planet, planet_nights, color in planet_tracks:
             planet_times = planet_nights[index]
             if not planet_times:
                 continue
-            add_planet_track(
-                ax,
-                observer.get_radec(planet_times, target=planet),
+            planet_coordinates = observer.get_radec(planet_times, target=planet)
+            add_planet_position(
+                ax, planet_coordinates[len(planet_coordinates) // 2],
                 color=color,
             )
 
@@ -570,8 +570,8 @@ def draw_preview(
         handles.append(
             Line2D(
                 [0], [0],
-                color=color,
-                marker="o", markersize=4,
+                color=color, linestyle="none",
+                marker="o", markersize=5, markeredgecolor="none",
                 label=planet.capitalize(),
             )
         )
