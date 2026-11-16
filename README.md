@@ -99,3 +99,9 @@ Run `uv run occultsky <command> --help` for the full option list.
 | `de441.bsp` | [NASA JPL NAIF SPICE](https://ssd.jpl.nasa.gov/ftp/eph/planets/bsp/) | Lunar and planetary ephemeris, 13,200 BCE – 17,191 CE |
 | `hip_main.dat` | Hipparcos catalogue (via Skyfield) | Star positions and magnitudes |
 | `skyculture_<culture>.json` | [Stellarium](https://github.com/Stellarium/stellarium) sky cultures | Constellation lines, star names, lunar mansions |
+
+## Star Name Annotations
+
+Star names are passed through verbatim from Stellarium's sky-culture data. In the `chinese` culture, suffixes mark stars added from Pan Nai's *The History of Stellar Observation in China* (中国恒星观测史): `*` = certified, `?` = uncertain identification (e.g. `天籥二?`). See Stellarium's [chinese sky-culture description](https://github.com/Stellarium/stellarium/blob/master/skycultures/chinese/description.md).
+
+These suffixes are kept in charts on purpose: for historical-record verification, an uncertain identification is itself evidence and must not be silently dropped.
