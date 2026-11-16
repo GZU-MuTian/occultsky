@@ -1,7 +1,7 @@
 [project]
 name = "occultsky"
 version = "0.1.0"
-description = "A Python toolkit for searching historical lunar occultation events of planets and rendering night-sky charts, powered by Skyfield."
+description = "OccultSky: Search for historical lunar occultations using Skyfield."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
