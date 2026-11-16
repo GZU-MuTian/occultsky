@@ -11,7 +11,7 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 from shapely import affinity
-from shapely.geometry import LineString
+from shapely.geometry import LineString, Point
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
@@ -53,11 +53,22 @@ _SKYVIEW_SIZE = 800
 # Star and constellation layers sit below the Moon band: the sky is the
 # background and the Moon the subject, so the band keeps its default zorder of 1
 _SKYVIEW_STAR_COLOR = "#1a1a1a"
-_SKYVIEW_LINE_COLOR = "#4a7ebb"
+# Constellation lines stay pale so they read as background, never competing
+# with the planet markers
+_SKYVIEW_LINE_COLOR = "#a9c1de"
 _SKYVIEW_ASTERISM_COLOR = "#c0392b"
 _SKYVIEW_STAR_LABEL_COLOR = "#5a5a5a"
 _SKYVIEW_MANSION_COLOR = "#b8860b"
 _SKYVIEW_LABEL_FONTS = ["DejaVu Sans", "Microsoft YaHei"]
+# Moon band: heavier than the old 0.3 gray so the swept region reads as shadow
+_SKYVIEW_MOON_COLOR = "#606060"
+_SKYVIEW_MOON_ALPHA = 0.5
+# Planet markers: five-pointed stars, red first; no blue twin of the
+# constellation line color
+_SKYVIEW_PLANET_COLORS = ["#d62728", "#ff7f0e", "#2ca02c", "#9467bd", "#8c564b"]
+_SKYVIEW_PLANET_MARKER = "*"
+_SKYVIEW_PLANET_SIZE = 14
+_SKYVIEW_MANSION_FONTSIZE = 9.5
 _SKYVIEW_LINES_ZORDER = 0.3
 _SKYVIEW_STARS_ZORDER = 0.5
 _SKYVIEW_LABELS_ZORDER = 0.8
@@ -233,6 +244,8 @@ def add_moon_track(
         coordinates: ``(ra, dec)`` tuples in degrees, as returned by ``Observer.get_radec``.
         angular_radius: Apparent angular radius of the Moon in degrees, as returned by ``Observer.get_moon_angular_radius``.
     """
+    if len(coordinates) == 0:
+        return
     track_ra = np.degrees(
         np.unwrap(np.radians([item[0] for item in coordinates]))
     )
@@ -240,16 +253,23 @@ def add_moon_track(
 
     # A degree of right ascension spans only cos(dec) degrees of arc on the sky, so buffering raw (ra, dec) coordinates would squash the disk horizontally by cos(dec). Compress the path in RA first (median dec gives a local plane approximation, good to <1% over one night), buffer, then stretch back: the band keeps the disk's true angular size on the celestial sphere. The stretch must be anchored at the origin, or the path itself would shift.
     cos_dec = np.cos(np.radians(float(np.median(track_dec))))
-    envelope = LineString(zip(track_ra * cos_dec, track_dec)).buffer(
-        angular_radius, quad_segs=32
-    )
+    if len(coordinates) == 1:
+        # A single sample (very short visibility window): the swept region
+        # degenerates to the lunar disk at that moment.
+        envelope = Point(track_ra[0] * cos_dec, track_dec[0]).buffer(
+            angular_radius, quad_segs=32
+        )
+    else:
+        envelope = LineString(zip(track_ra * cos_dec, track_dec)).buffer(
+            angular_radius, quad_segs=32
+        )
     envelope = affinity.scale(
         envelope, xfact=1.0 / cos_dec, yfact=1.0, origin=(0.0, 0.0)
     )
     xs, ys = envelope.exterior.xy
     ax.fill(
         xs, ys,
-        color=_BODY_COLORS[0], alpha=0.3,
+        color=_SKYVIEW_MOON_COLOR, alpha=_SKYVIEW_MOON_ALPHA,
         transform=ax.get_transform("world"),
     )
 
@@ -259,18 +279,19 @@ def add_planet_position(
     coordinate: tuple[float, float],
     color: str,
 ) -> None:
-    """Draw one planet's position as a single solid dot.
+    """Draw one planet's position as a single five-pointed star.
 
-    A planet moves little during one night, so one dot marks it: no track line and no ring-style markers.
+    A planet moves little during one night, so one star marks it: no track line and no ring-style markers.
 
     Args:
         ax: WCS axes to draw on.
         coordinate: ``(ra, dec)`` tuple in degrees, as returned by ``Observer.get_radec``.
-        color: Color of the dot.
+        color: Color of the star.
     """
     ax.plot(
-        coordinate[0], coordinate[1], "o",
-        color=color, markersize=5, markeredgecolor="none",
+        coordinate[0], coordinate[1], _SKYVIEW_PLANET_MARKER,
+        color=color, markersize=_SKYVIEW_PLANET_SIZE,
+        markeredgecolor="white", markeredgewidth=0.6,
         transform=ax.get_transform("world"),
     )
 
@@ -431,7 +452,7 @@ def add_mansions(
                 label, (row['ra_degrees'], row['dec_degrees']),
                 xycoords=ax.get_transform("world"),
                 textcoords="offset points", xytext=(0, 6),
-                color=_SKYVIEW_MANSION_COLOR, fontsize=6.5,
+                color=_SKYVIEW_MANSION_COLOR, fontsize=_SKYVIEW_MANSION_FONTSIZE,
                 ha="center", va="bottom", fontfamily=_SKYVIEW_LABEL_FONTS,
                 zorder=_SKYVIEW_MANSIONS_ZORDER,
                 annotation_clip=True,
@@ -511,7 +532,7 @@ def draw_preview(
             ),
             color,
         )
-        for planet, color in zip(planets, _BODY_COLORS[1:])
+        for planet, color in zip(planets, _SKYVIEW_PLANET_COLORS)
     ]
 
     for index, times in enumerate(nights):
@@ -564,14 +585,15 @@ def draw_preview(
 
     # One shared legend for both subplots
     handles = [
-        Patch(color=_BODY_COLORS[0], alpha=0.3, label="Moon"),
+        Patch(color=_SKYVIEW_MOON_COLOR, alpha=_SKYVIEW_MOON_ALPHA, label="Moon"),
     ]
     for planet, _, color in planet_tracks:
         handles.append(
             Line2D(
                 [0], [0],
                 color=color, linestyle="none",
-                marker="o", markersize=5, markeredgecolor="none",
+                marker=_SKYVIEW_PLANET_MARKER, markersize=10,
+                markeredgecolor="white", markeredgewidth=0.5,
                 label=planet.capitalize(),
             )
         )
